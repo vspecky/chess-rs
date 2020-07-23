@@ -8,6 +8,6 @@ pub struct Piece {
 
 impl Piece {
     pub fn new(img: Image, label: char) -> Self {
-        Self { img, label, }
+        Self { img, label }
     }
 }

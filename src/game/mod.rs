@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use ggez::{
     event::{EventHandler, MouseButton},
-    graphics::{Color, Image},
+    graphics::{self, Color, DrawMode, DrawParam, Image},
     input::mouse,
     Context, GameResult,
 };
@@ -38,9 +38,10 @@ pub struct RChess {
     turn: Player,
     w_color: Color,
     b_color: Color,
-    sq_size: u32,
+    sq_size: i32,
     check: u8,
     moving: bool,
+    needs_draw: bool,
 }
 
 impl RChess {
@@ -65,7 +66,7 @@ impl RChess {
                     continue;
                 }
 
-                if piece.is_ascii_alphabetic() {
+                if piece != &'-' {
                     let img = Image::new(ctx, &format!("/{}.png", piece))?;
                     pieces.insert(*piece, img);
                 }
@@ -80,13 +81,14 @@ impl RChess {
             board_pcs,
             current: None,
             moves: Vec::new(),
-            pieces: HashMap::new(),
+            pieces: pieces,
             turn: Player::White,
             w_color,
             b_color,
-            sq_size: WIN_WIDTH / 8,
+            sq_size: (WIN_WIDTH / 8) as i32,
             check: 0,
             moving: false,
+            needs_draw: true,
         };
 
         chess.reset_board();
@@ -102,7 +104,7 @@ impl RChess {
             for x in 0..8 {
                 let col_even = x % 2 == 0;
 
-                self.board[y][x] = if col_even && row_even {
+                self.board[y][x] = if (col_even && row_even) || (!col_even && !row_even) {
                     self.w_color.clone()
                 } else {
                     self.b_color.clone()
@@ -115,8 +117,8 @@ impl RChess {
      */
     fn get_piece_at_mouse(&self, ctx: &Context) -> char {
         let mouse_pos = mouse::position(ctx);
-        let x = (mouse_pos.x as u32 / self.sq_size) as usize;
-        let y = (mouse_pos.y as u32 / self.sq_size) as usize;
+        let x = (mouse_pos.x as i32 / self.sq_size) as usize;
+        let y = (mouse_pos.y as i32 / self.sq_size) as usize;
 
         self.board_pcs[y][x]
     }
@@ -320,14 +322,48 @@ impl RChess {
 
 impl EventHandler for RChess {
     fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
-        unimplemented!();
+        Ok(())
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
-        unimplemented!();
-    }
+        if !self.needs_draw {
+            return Ok(());
+        }
+        graphics::clear(ctx, Color::from_rgb(0, 0, 0));
 
+        for (y, row) in self.board.iter().enumerate() {
+            for (x, cell) in row.iter().enumerate() {
+                let x_sq = x as i32 * self.sq_size;
+                let y_sq = y as i32 * self.sq_size;
+
+                let r = graphics::Rect::new_i32(x_sq, y_sq, self.sq_size, self.sq_size);
+                let mesh = graphics::Mesh::new_rectangle(ctx, DrawMode::fill(), r, *cell)?;
+
+                graphics::draw(ctx, &mesh, DrawParam::default())?;
+
+                let ch = self.board_pcs[y][x];
+
+                if self.is_piece(ch) {
+                    let img = match self.pieces.get(&ch) {
+                        Some(i) => i,
+                        None => continue,
+                    };
+                    let draw_param = DrawParam::new()
+                        .dest([x_sq as f32, y_sq as f32])
+                        .scale([1.5, 1.5]);
+
+                    graphics::draw(ctx, img, draw_param)?;
+                }
+            }
+        }
+
+        self.needs_draw = false;
+
+        graphics::present(ctx)
+    }
+    /*
     fn mouse_button_down_event(&mut self, ctx: &mut Context, btn: MouseButton, x: f32, y: f32) {
         unimplemented!();
     }
+    */
 }
