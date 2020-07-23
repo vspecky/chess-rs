@@ -7,7 +7,8 @@ Note: All piece assets were obtained from [here](https://commons.wikimedia.org/w
 - [x] Board Implementation
 - [x] Piece Implementation
 - [x] Piece Moves Implementation
-- [ ] Rendering
+- [x] Rendering
+- [ ] Player-Piece Interaction
 - [ ] En Passant
 - [ ] Castling
 - [ ] Check & Checkmate
