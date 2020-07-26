@@ -8,8 +8,8 @@ Note: All piece assets were obtained from [here](https://commons.wikimedia.org/w
 - [x] Piece Implementation
 - [x] Piece Moves Implementation
 - [x] Rendering
-- [ ] Player-Piece Interaction
+- [x] Player-Piece Interaction
 - [ ] En Passant
 - [ ] Castling
-- [ ] Check & Checkmate
+- [x] Check & Checkmate (WIP)
 - [ ] Minimax AI
