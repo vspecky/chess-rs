@@ -33,6 +33,7 @@ pub struct RChess {
     board: [[Color; 8]; 8],
     board_pcs: [[char; 8]; 8],
     current: Option<char>,
+    current_pos: Option<(u8, u8)>,
     moves: Vec<(u8, u8)>,
     pieces: HashMap<char, Image>,
     turn: Player,
@@ -42,6 +43,10 @@ pub struct RChess {
     check: u8,
     moving: bool,
     needs_draw: bool,
+    en_p_black: u8,
+    en_p_white: u8,
+    w_king_pos: (u8, u8),
+    b_king_pos: (u8, u8),
 }
 
 impl RChess {
@@ -74,12 +79,13 @@ impl RChess {
         }
 
         let w_color = Color::from_rgb(200, 200, 200);
-        let b_color = Color::from_rgb(10, 10, 10);
+        let b_color = Color::from_rgb(50, 50, 50);
 
         let mut chess = Self {
             board: [[w_color.clone(); 8]; 8],
             board_pcs,
             current: None,
+            current_pos: None,
             moves: Vec::new(),
             pieces: pieces,
             turn: Player::White,
@@ -89,6 +95,10 @@ impl RChess {
             check: 0,
             moving: false,
             needs_draw: true,
+            en_p_white: 0,
+            en_p_black: 0,
+            w_king_pos: (5, 0),
+            b_king_pos: (5, 7),
         };
 
         chess.reset_board();
@@ -157,85 +167,93 @@ impl RChess {
      * a check is performed on the type. If it's an opponent piece, the piece
      * square is added to the list of possible moves, else not
      */
-    fn add_line_moves(&mut self, x: u8, y: u8, dx: i8, dy: i8) {
+    fn get_line_moves(&mut self, x: u8, y: u8, dx: i8, dy: i8) -> Vec<(u8, u8)> {
         let mut m_x = x as i8 + dx;
         let mut m_y = y as i8 + dy;
+
+        let mut moves = Vec::<(u8, u8)>::with_capacity(7);
 
         while m_x >= 0 && m_x < 8 && m_y >= 0 && m_y < 8 {
             let ch = self.board_pcs[m_y as usize][m_x as usize];
 
             if self.is_piece(ch) {
                 if self.is_opponent(ch) {
-                    self.moves.push((m_x as u8, m_y as u8));
+                    moves.push((m_x as u8, m_y as u8));
                 }
 
                 break;
             }
 
-            self.moves.push((m_x as u8, m_y as u8));
+            moves.push((m_x as u8, m_y as u8));
             m_x += dx;
             m_y += dy;
         }
+
+        moves
     }
 
     /* Takes a position and and pushes into the move vector
      * all the moves that a pawn at that position can make
      */
-    fn mv_pawn(&mut self, x: u8, y: u8) {
+    fn mv_pawn(&self, x: u8, y: u8) -> Vec<(u8, u8)> {
         let x_i = x as usize;
         let y_i = y as usize;
+
+        let mut moves = Vec::<(u8, u8)>::with_capacity(4);
 
         match self.turn {
             Player::White => {
                 if y == 0 {
-                    return;
+                    return moves;
                 }
 
                 if !self.is_piece(self.board_pcs[y_i - 1][x_i]) {
-                    self.moves.push((x, y - 1));
+                    moves.push((x, y - 1));
                 }
 
                 if y == 6 && !self.is_piece(self.board_pcs[y_i - 2][x_i]) {
-                    self.moves.push((x, y - 2));
+                    moves.push((x, y - 2));
                 }
 
                 if x < 7 && self.is_opponent(self.board_pcs[y_i - 1][x_i + 1]) {
-                    self.moves.push((x + 1, y - 1));
+                    moves.push((x + 1, y - 1));
                 }
 
                 if x > 0 && self.is_opponent(self.board_pcs[y_i - 1][x_i - 1]) {
-                    self.moves.push((x - 1, y - 1));
+                    moves.push((x - 1, y - 1));
                 }
             }
 
             Player::Black => {
                 if y == 7 {
-                    return;
+                    return moves;
                 }
 
                 if !self.is_piece(self.board_pcs[y_i + 1][x_i]) {
-                    self.moves.push((x, y + 1));
+                    moves.push((x, y + 1));
                 }
 
                 if y == 1 && !self.is_piece(self.board_pcs[y_i + 2][x_i]) {
-                    self.moves.push((x, y + 2));
+                    moves.push((x, y + 2));
                 }
 
                 if x < 7 && self.is_opponent(self.board_pcs[y_i + 1][x_i + 1]) {
-                    self.moves.push((x + 1, y + 1));
+                    moves.push((x + 1, y + 1));
                 }
 
                 if x > 0 && self.is_opponent(self.board_pcs[y_i + 1][x_i - 1]) {
-                    self.moves.push((x - 1, y + 1));
+                    moves.push((x - 1, y + 1));
                 }
             }
         }
+
+        moves
     }
 
     /* Used for moving a knight. Unique function cuz
      * knights make a 2.5 move.
      */
-    fn mv_knight(&mut self, x: u8, y: u8) {
+    fn mv_knight(&self, x: u8, y: u8) -> Vec<(u8, u8)> {
         let x_m = x as i8;
         let y_m = y as i8;
 
@@ -250,56 +268,65 @@ impl RChess {
             (2, 1),
         ];
 
+        let mut poss_moves = Vec::<(u8, u8)>::with_capacity(8);
+
         for (dx, dy) in moves {
             let pos_x = x_m + dx;
             let pos_y = y_m + dy;
             if pos_x >= 0 && pos_x < 8 && pos_y >= 0 && pos_y < 8 {
                 let ch = self.board_pcs[pos_y as usize][pos_x as usize];
                 if !self.is_piece(ch) || self.is_opponent(ch) {
-                    self.moves.push((pos_x as u8, pos_y as u8));
+                    poss_moves.push((pos_x as u8, pos_y as u8));
                 }
             }
         }
+
+        poss_moves
     }
 
     /* Used for moving a bishop
      */
-    fn mv_bishop(&mut self, x: u8, y: u8) {
-        for dy in -1..=1 {
-            for dx in -1..=1 {
-                if x == 0 || y == 0 {
-                    continue;
-                }
-                self.add_line_moves(x, y, dx, dy);
-            }
-        }
+    fn mv_bishop(&mut self, x: u8, y: u8) -> Vec<(u8, u8)> {
+        let mut moves = Vec::<(u8, u8)>::with_capacity(13);
+        moves.append(&mut self.get_line_moves(x, y, 1, 1));
+        moves.append(&mut self.get_line_moves(x, y, 1, -1));
+        moves.append(&mut self.get_line_moves(x, y, -1, -1));
+        moves.append(&mut self.get_line_moves(x, y, -1, 1));
+        moves
     }
 
     /* Used for moving a Rook
      */
-    fn mv_rook(&mut self, x: u8, y: u8) {
+    fn mv_rook(&mut self, x: u8, y: u8) -> Vec<(u8, u8)> {
+        let mut moves = Vec::<(u8, u8)>::with_capacity(14);
         for (dx, dy) in &[(0, 1), (0, -1), (1, 0), (-1, 0)] {
-            self.add_line_moves(x, y, *dx, *dy);
+            moves.append(&mut self.get_line_moves(x, y, *dx, *dy));
         }
+
+        moves
     }
 
     /* Used for moving a Queen
      */
-    fn mv_queen(&mut self, x: u8, y: u8) {
+    fn mv_queen(&mut self, x: u8, y: u8) -> Vec<(u8, u8)> {
+        let mut moves = Vec::<(u8, u8)>::with_capacity(28);
         for dy in -1..=1 {
             for dx in -1..=1 {
                 if x == 0 && y == 0 {
                     continue;
                 }
 
-                self.add_line_moves(x, y, dx, dy);
+                moves.append(&mut self.get_line_moves(x, y, dx, dy));
             }
         }
+
+        moves
     }
 
     /* Used for moving a King
      */
-    fn mv_king(&mut self, x: u8, y: u8) {
+    fn mv_king(&mut self, x: u8, y: u8) -> Vec<(u8, u8)> {
+        let mut moves = Vec::<(u8, u8)>::with_capacity(8);
         for dy in -1..=1 {
             for dx in -1..=1 {
                 if x == 0 && y == 0 {
@@ -309,14 +336,119 @@ impl RChess {
                 let x_m = x as i8 + dx;
                 let y_m = y as i8 + dy;
 
-                if x_m * y_m >= 0 && x_m * y_m <= 49 {
+                if x_m >= 0 && x_m < 8 && y_m >= 0 && y_m < 8 {
                     let ch = self.board_pcs[y_m as usize][x_m as usize];
                     if !self.is_piece(ch) || self.is_opponent(ch) {
-                        self.moves.push((x_m as u8, y_m as u8));
+                        moves.push((x_m as u8, y_m as u8));
                     }
                 }
             }
         }
+
+        moves
+    }
+
+    fn get_piece_moves(&mut self, ch: char, x: u8, y: u8) -> Vec<(u8, u8)> {
+        match ch {
+            'p' | 'P' => self.mv_pawn(x, y),
+            'r' | 'R' => self.mv_rook(x, y),
+            'n' | 'N' => self.mv_knight(x, y),
+            'b' | 'B' => self.mv_bishop(x, y),
+            'q' | 'Q' => self.mv_queen(x, y),
+            'k' | 'K' => self.mv_king(x, y),
+            _ => Vec::<(u8, u8)>::new(),
+        }
+    }
+
+    fn select_piece(&mut self, x: u8, y: u8) -> GameResult<()> {
+        let ch = self.board_pcs[y as usize][x as usize];
+
+        if !self.is_piece(ch) || self.is_opponent(ch) {
+            return Ok(());
+        }
+
+        let moves = self.get_piece_moves(ch, x, y);
+
+        self.current = Some(ch);
+        self.current_pos = Some((x, y));
+
+        for (m_x, m_y) in &moves {
+            self.board[*m_y as usize][*m_x as usize] = Color::from_rgb(200, 200, 0);
+
+            self.moves.push((*m_x, *m_y));
+        }
+
+        self.board[y as usize][x as usize] = Color::from_rgb(255, 85, 85);
+
+        self.needs_draw = true;
+        self.moving = true;
+
+        Ok(())
+    }
+
+    fn move_piece(&mut self, x: u8, y: u8) -> GameResult<()> {
+        if self.moves.contains(&(x, y)) {
+            self.board_pcs[y as usize][x as usize] = self.current.unwrap();
+            let curr = self.current_pos.unwrap();
+            self.board_pcs[curr.1 as usize][curr.0 as usize] = '-';
+            self.current = None;
+            self.current_pos = None;
+            self.moving = false;
+            self.turn = self.turn.switch();
+            self.moves.clear();
+            self.needs_draw = true;
+            self.reset_board();
+            return Ok(());
+        }
+
+        let ch = self.board_pcs[y as usize][x as usize];
+
+        if self.is_piece(ch) && !self.is_opponent(ch) {
+            self.moves.clear();
+            self.reset_board();
+            self.select_piece(x, y);
+            self.needs_draw = true;
+        }
+
+        Ok(())
+    }
+
+    fn check_for_checks(&mut self, board: [[char; 8]; 8], plyr: Player) -> bool {
+        match plyr {
+            Player::White => {
+                for y in 0..8 {
+                    for x in 0..8 {
+                        let ch = board[y as usize][x as usize];
+
+                        if !Self::is_black_piece(ch) {
+                            continue;
+                        }
+
+                        if self.get_piece_moves(ch, x, y).contains(&self.w_king_pos) {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            Player::Black => {
+                for y in 0..8 {
+                    for x in 0..8 {
+                        let ch = board[y as usize][x as usize];
+
+                        if !Self::is_white_piece(ch) {
+                            continue;
+                        }
+
+                        if self.get_piece_moves(ch, x, y).contains(&self.b_king_pos) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        false
     }
 }
 
@@ -348,9 +480,11 @@ impl EventHandler for RChess {
                         Some(i) => i,
                         None => continue,
                     };
-                    let draw_param = DrawParam::new()
-                        .dest([x_sq as f32, y_sq as f32])
-                        .scale([1.5, 1.5]);
+
+                    let ddraw = (self.sq_size as f32 - img.width() as f32 * 1.5) / 2.;
+                    let x_draw = x_sq as f32 + ddraw;
+                    let y_draw = y_sq as f32 + ddraw;
+                    let draw_param = DrawParam::new().dest([x_draw, y_draw]).scale([1.5, 1.5]);
 
                     graphics::draw(ctx, img, draw_param)?;
                 }
@@ -361,9 +495,21 @@ impl EventHandler for RChess {
 
         graphics::present(ctx)
     }
-    /*
+
     fn mouse_button_down_event(&mut self, ctx: &mut Context, btn: MouseButton, x: f32, y: f32) {
-        unimplemented!();
+        let x = (x as i32 / self.sq_size) as u8;
+        let y = (y as i32 / self.sq_size) as u8;
+
+        match btn {
+            MouseButton::Left => {
+                if !self.moving {
+                    self.select_piece(x, y);
+                } else {
+                    self.move_piece(x, y);
+                }
+            }
+
+            _ => (),
+        }
     }
-    */
 }
