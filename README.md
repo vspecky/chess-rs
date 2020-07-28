@@ -11,5 +11,5 @@ Note: All piece assets were obtained from [here](https://commons.wikimedia.org/w
 - [x] Player-Piece Interaction
 - [ ] En Passant
 - [ ] Castling
-- [x] Check & Checkmate (WIP)
+- [x] Check & Checkmate
 - [ ] Minimax AI
