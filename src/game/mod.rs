@@ -28,6 +28,11 @@ impl Player {
     }
 }
 
+enum Castling {
+    QueenSide,
+    KingSide,
+}
+
 struct Point<T> {
     x: T,
     y: T,
@@ -44,6 +49,11 @@ struct BoardState {
     player: Player,
     wk_pos: (u8, u8),
     bk_pos: (u8, u8),
+    enp_b: u8,
+    enp_w: u8,
+    castling: u8,
+    b_check: bool,
+    w_check: bool,
 }
 
 impl std::clone::Clone for BoardState {
@@ -53,6 +63,11 @@ impl std::clone::Clone for BoardState {
             player: self.player,
             wk_pos: self.wk_pos,
             bk_pos: self.bk_pos,
+            enp_b: self.enp_b,
+            enp_w: self.enp_w,
+            castling: self.castling,
+            b_check: self.b_check,
+            w_check: self.w_check,
         }
     }
 }
@@ -82,13 +97,15 @@ pub struct RChess {
     w_color: Color,
     b_color: Color,
     sq_size: i32,
-    check: u8,
     moving: bool,
     needs_draw: bool,
-    en_p_black: u8,
-    en_p_white: u8,
+    enp_b: u8,
+    enp_w: u8,
     w_king_pos: (u8, u8),
     b_king_pos: (u8, u8),
+    castling: u8,
+    w_check: bool,
+    b_check: bool,
 }
 
 impl RChess {
@@ -134,13 +151,15 @@ impl RChess {
             w_color,
             b_color,
             sq_size: (WIN_WIDTH / 8) as i32,
-            check: 0,
             moving: false,
             needs_draw: true,
-            en_p_white: 0,
-            en_p_black: 0,
+            enp_b: 0,
+            enp_w: 0,
             w_king_pos: (4, 7),
             b_king_pos: (4, 0),
+            castling: 0b1111,
+            w_check: false,
+            b_check: false,
         };
 
         chess.reset_board();
@@ -173,6 +192,11 @@ impl RChess {
             player: self.turn,
             wk_pos: self.w_king_pos,
             bk_pos: self.b_king_pos,
+            castling: self.castling,
+            enp_b: self.enp_b,
+            enp_w: self.enp_w,
+            w_check: self.w_check,
+            b_check: self.b_check,
         }
     }
 
@@ -225,8 +249,45 @@ impl RChess {
             state.bk_pos = (to.x, to.y);
         }
 
+        state.enp_b = 0;
+        state.enp_w = 0;
+
+        match ch {
+            'K' => {
+                state.wk_pos = (to.x, to.y);
+            }
+
+            'k' => {
+                state.bk_pos = (to.x, to.y);
+            }
+
+            'p' => {
+                if from.y == 1 && to.y == 3 {
+                    state.enp_b = 0x80 >> from.x;
+                } else if from.y == 4 && from.x != to.x && state.board[5][to.x as usize] == '-' {
+                    state.board[4][to.x as usize] = '-';
+                }
+            }
+
+            'P' => {
+                if from.y == 6 && to.y == 4 {
+                    state.enp_w = 0x80 >> from.x;
+                } else if from.y == 3 && from.x != to.x && state.board[2][to.x as usize] == '-' {
+                    state.board[3][to.x as usize] = '-';
+                }
+            }
+
+            _ => (),
+        }
+
         state.board[to.y as usize][to.x as usize] = ch;
         state.board[y][x] = '-';
+
+        if Self::is_white_piece(ch) && Self::check_for_checks(Player::Black, state) {
+            state.b_check = true;
+        } else if Self::is_black_piece(ch) && Self::check_for_checks(Player::White, state) {
+            state.w_check = true;
+        }
     }
 
     /* Takes a dx and dy that specifies a line of path.
@@ -461,7 +522,7 @@ impl RChess {
             let checked = Self::check_for_checks(self.turn, &mut state);
             //println!("{}", checked);
             if checked {
-                println!("checked");
+                //println!("checked");
                 continue;
             }
             self.board[*m_y as usize][*m_x as usize] = Color::from_rgb(200, 200, 0);
@@ -536,11 +597,13 @@ impl RChess {
                 };
 
                 if Self::get_piece_moves(ch, Point::new(x, y), state).contains(k_pos) {
+                    state.player = plyr;
                     return true;
                 }
             }
         }
 
+        state.player = plyr;
         false
     }
 
