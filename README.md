@@ -11,7 +11,7 @@ As of 31st July 2020, this is a fully functional chess game. Though without an A
 - [x] Piece Moves Implementation
 - [x] Rendering
 - [x] Player-Piece Interaction
-- [x] En Passant (WIP)
+- [x] En Passant
 - [x] Castling
 - [x] Check & Checkmate
 - [ ] Minimax AI
