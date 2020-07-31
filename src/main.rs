@@ -3,14 +3,12 @@ mod game;
 
 use ggez::{
     conf::{WindowMode, WindowSetup},
-    event::{self, EventHandler},
-    graphics, Context, ContextBuilder, GameResult,
+    event, ContextBuilder, GameResult,
 };
 
 use std::path;
 
-const WIN_WIDTH: u32 = 800;
-const WIN_HEIGHT: u32 = 800;
+const WIN_SIZE: u32 = 800;
 
 fn main() -> GameResult {
     let win_mode = WindowMode::default().dimensions(800., 800.);
