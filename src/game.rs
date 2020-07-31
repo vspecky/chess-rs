@@ -4,14 +4,12 @@ use std::fmt;
 use ggez::{
     event::{EventHandler, MouseButton},
     graphics::{self, Color, DrawMode, DrawParam, Image},
-    input::mouse,
     Context, GameResult,
 };
 
 use std::vec::Vec;
 
-use crate::WIN_HEIGHT;
-use crate::WIN_WIDTH;
+use crate::WIN_SIZE;
 
 #[derive(Clone, Copy)]
 enum Player {
@@ -28,9 +26,15 @@ impl Player {
     }
 }
 
-enum Castling {
-    QueenSide,
-    KingSide,
+impl fmt::Display for Player {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let to_print = match *self {
+            Self::White => "White",
+            Self::Black => "Black",
+        };
+
+        write!(f, "{}", to_print)
+    }
 }
 
 struct Point<T>
@@ -168,7 +172,7 @@ impl RChess {
             turn: Player::White,
             w_color,
             b_color,
-            sq_size: (WIN_WIDTH / 8) as i32,
+            sq_size: (WIN_SIZE / 8) as i32,
             moving: false,
             needs_draw: true,
             enp_b: 0,
@@ -216,16 +220,6 @@ impl RChess {
             w_check: self.w_check,
             b_check: self.b_check,
         }
-    }
-
-    /* Gets the piece under the mouse.
-     */
-    fn get_piece_at_mouse(&self, ctx: &Context) -> char {
-        let mouse_pos = mouse::position(ctx);
-        let x = (mouse_pos.x as i32 / self.sq_size) as usize;
-        let y = (mouse_pos.y as i32 / self.sq_size) as usize;
-
-        self.board_pcs[y][x]
     }
 
     /* Checks if a piece belongs to white.
@@ -668,7 +662,6 @@ impl RChess {
     fn move_piece(&mut self, x: u8, y: u8) -> bool {
         if self.moves.contains(&(x, y)) {
             let mut state = self.get_board_state();
-            let piece = self.current.unwrap();
             let curr = self.current_pos.unwrap();
             Self::move_piece_to(Point::new(curr.0, curr.1), Point::new(x, y), &mut state);
             self.set_state(&state);
@@ -676,6 +669,7 @@ impl RChess {
             self.current_pos = None;
             self.moving = false;
             self.turn = self.turn.switch();
+            state.player = state.player.switch();
             self.moves.clear();
             self.needs_draw = true;
             self.reset_board();
@@ -760,7 +754,12 @@ impl RChess {
                     let mut state_ = state.clone();
                     Self::move_piece_to(Point::new(x, y), Point::new(m_x, m_y), &mut state_);
 
-                    if !Self::check_for_checks(plyr, &mut state_) {
+                    let checked = match plyr {
+                        Player::White => state_.w_check,
+                        Player::Black => state_.b_check,
+                    };
+
+                    if !checked {
                         return false;
                     }
                 }
@@ -771,7 +770,7 @@ impl RChess {
 }
 
 impl EventHandler for RChess {
-    fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
+    fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
         Ok(())
     }
 
@@ -834,10 +833,4 @@ impl EventHandler for RChess {
             _ => (),
         }
     }
-}
-
-#[cfg(test)]
-mod test {
-    #[test]
-    fn check() {}
 }
