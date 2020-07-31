@@ -33,14 +33,32 @@ enum Castling {
     KingSide,
 }
 
-struct Point<T> {
+struct Point<T>
+where
+    T: Copy,
+{
     x: T,
     y: T,
 }
 
-impl<T> Point<T> {
+impl<T> Point<T>
+where
+    T: Copy,
+{
     fn new(x: T, y: T) -> Self {
         Self { x, y }
+    }
+}
+
+impl<T> std::clone::Clone for Point<T>
+where
+    T: Copy,
+{
+    fn clone(&self) -> Self {
+        Self {
+            x: self.x,
+            y: self.y,
+        }
     }
 }
 
@@ -243,22 +261,38 @@ impl RChess {
         let y = from.y as usize;
 
         let ch = state.board[y][x];
-        if ch == 'K' {
-            state.wk_pos = (to.x, to.y);
-        } else if ch == 'k' {
-            state.bk_pos = (to.x, to.y);
-        }
-
         state.enp_b = 0;
         state.enp_w = 0;
 
         match ch {
             'K' => {
                 state.wk_pos = (to.x, to.y);
+                state.castling &= 0b0011;
+
+                if (from.x, from.y) == (4, 7) {
+                    if (to.x, to.y) == (6, 7) {
+                        state.board[7][5] = 'R';
+                        state.board[7][7] = '-';
+                    } else if (to.x, to.y) == (2, 7) {
+                        state.board[7][3] = 'R';
+                        state.board[7][0] = '-';
+                    }
+                }
             }
 
             'k' => {
                 state.bk_pos = (to.x, to.y);
+                state.castling &= 0b1100;
+
+                if (from.x, from.y) == (4, 0) {
+                    if (to.x, to.y) == (6, 0) {
+                        state.board[0][5] = 'r';
+                        state.board[0][7] = '-';
+                    } else if (to.x, to.y) == (2, 0) {
+                        state.board[0][3] = 'r';
+                        state.board[0][0] = '-';
+                    }
+                }
             }
 
             'p' => {
@@ -277,16 +311,37 @@ impl RChess {
                 }
             }
 
+            'r' => {
+                if from.x == 0 && from.y == 0 {
+                    state.castling &= 0b1101;
+                } else if from.x == 7 && from.y == 0 {
+                    state.castling &= 0b1110;
+                }
+            }
+
+            'R' => {
+                if from.x == 0 && from.y == 7 {
+                    state.castling &= 0b0111;
+                } else if from.x == 7 && from.y == 7 {
+                    state.castling &= 0b1011;
+                }
+            }
+
             _ => (),
         }
 
         state.board[to.y as usize][to.x as usize] = ch;
         state.board[y][x] = '-';
 
-        if Self::is_white_piece(ch) && Self::check_for_checks(Player::Black, state) {
-            state.b_check = true;
-        } else if Self::is_black_piece(ch) && Self::check_for_checks(Player::White, state) {
-            state.w_check = true;
+        state.b_check = Self::check_for_checks(Player::Black, state);
+        state.w_check = Self::check_for_checks(Player::White, state);
+
+        if state.b_check {
+            state.castling &= 0b10;
+        }
+
+        if state.w_check {
+            state.castling &= 0b01;
         }
     }
 
@@ -344,11 +399,15 @@ impl RChess {
                     moves.push((pos.x, pos.y - 2));
                 }
 
-                if pos.x < 7 && Self::is_opponent(state.player, state.board[y_i - 1][x_i + 1]) {
+                if (pos.x < 7 && Self::is_opponent(state.player, state.board[y_i - 1][x_i + 1]))
+                    || (pos.y == 3 && pos.x < 7 && state.enp_b & (0x80 >> (pos.x + 1)) > 0)
+                {
                     moves.push((pos.x + 1, pos.y - 1));
                 }
 
-                if pos.x > 0 && Self::is_opponent(state.player, state.board[y_i - 1][x_i - 1]) {
+                if (pos.x > 0 && Self::is_opponent(state.player, state.board[y_i - 1][x_i - 1]))
+                    || (pos.y == 3 && pos.x > 0 && state.enp_b & (0x80 >> (pos.x - 1)) > 0)
+                {
                     moves.push((pos.x - 1, pos.y - 1));
                 }
             }
@@ -366,11 +425,15 @@ impl RChess {
                     moves.push((pos.x, pos.y + 2));
                 }
 
-                if pos.x < 7 && Self::is_opponent(state.player, state.board[y_i + 1][x_i + 1]) {
+                if (pos.x < 7 && Self::is_opponent(state.player, state.board[y_i + 1][x_i + 1]))
+                    || (pos.y == 4 && pos.x < 7 && state.enp_w & (0x80 >> (pos.x + 1)) > 0)
+                {
                     moves.push((pos.x + 1, pos.y + 1));
                 }
 
-                if pos.x > 0 && Self::is_opponent(state.player, state.board[y_i + 1][x_i - 1]) {
+                if (pos.x > 0 && Self::is_opponent(state.player, state.board[y_i + 1][x_i - 1]))
+                    || (pos.y == 4 && pos.x > 0 && state.enp_w & (0x80 >> (pos.x - 1)) > 0)
+                {
                     moves.push((pos.x - 1, pos.y + 1));
                 }
             }
@@ -474,6 +537,80 @@ impl RChess {
             }
         }
 
+        let ch = state.board[pos.y as usize][pos.x as usize];
+
+        let (checked, q_side, k_side, plyr) = match ch {
+            'k' => (
+                state.b_check,
+                state.castling & 0b0010 > 0,
+                state.castling & 0b0001 > 0,
+                Player::Black,
+            ),
+            'K' => (
+                state.w_check,
+                state.castling & 0b1000 > 0,
+                state.castling & 0b0100 > 0,
+                Player::White,
+            ),
+            _ => (false, false, false, Player::White),
+        };
+
+        if checked {
+            return moves;
+        }
+
+        let y = pos.y as usize;
+
+        if k_side {
+            let mut accept = true;
+            for x in 5..=6 {
+                if Self::is_piece(state.board[y][x as usize]) {
+                    accept = false;
+                    break;
+                }
+                let mut state_ = state.clone();
+                Self::move_piece_to(pos.clone(), Point::new(x, pos.y), &mut state_);
+                let checked = match plyr {
+                    Player::White => state_.w_check,
+                    Player::Black => state_.b_check,
+                };
+
+                if checked {
+                    accept = false;
+                    break;
+                }
+            }
+
+            if accept {
+                moves.push((6, pos.y));
+            }
+        }
+
+        if q_side {
+            let mut accept = true;
+            for x in 2..=3 {
+                if Self::is_piece(state.board[y][x as usize]) {
+                    accept = false;
+                    break;
+                }
+                let mut state_ = state.clone();
+                Self::move_piece_to(pos.clone(), Point::new(x, pos.y), &mut state_);
+                let checked = match plyr {
+                    Player::White => state_.w_check,
+                    Player::Black => state_.b_check,
+                };
+
+                if checked {
+                    accept = false;
+                    break;
+                }
+            }
+
+            if accept {
+                moves.push((2, pos.y));
+            }
+        }
+
         moves
     }
 
@@ -513,24 +650,22 @@ impl RChess {
         self.current = Some(ch);
         self.current_pos = Some((x, y));
 
-        //println!("{:?}", moves);
-
         for (m_x, m_y) in &moves {
             let mut state = board_state.clone();
             Self::move_piece_to(Point::new(x, y), Point::new(*m_x, *m_y), &mut state);
-            //println!("{}", state);
-            let checked = Self::check_for_checks(self.turn, &mut state);
-            //println!("{}", checked);
+            let checked = match self.turn {
+                Player::White => state.w_check,
+                Player::Black => state.b_check,
+            };
+
             if checked {
-                //println!("checked");
                 continue;
             }
+
             self.board[*m_y as usize][*m_x as usize] = Color::from_rgb(200, 200, 0);
 
             self.moves.push((*m_x, *m_y));
         }
-
-        //println!("MOVE END");
 
         self.board[y as usize][x as usize] = Color::from_rgb(255, 85, 85);
 
@@ -540,15 +675,11 @@ impl RChess {
 
     fn move_piece(&mut self, x: u8, y: u8) -> bool {
         if self.moves.contains(&(x, y)) {
+            let mut state = self.get_board_state();
             let piece = self.current.unwrap();
-            match piece {
-                'K' => self.w_king_pos = (x, y),
-                'k' => self.b_king_pos = (x, y),
-                _ => (),
-            }
-            self.board_pcs[y as usize][x as usize] = piece;
             let curr = self.current_pos.unwrap();
-            self.board_pcs[curr.1 as usize][curr.0 as usize] = '-';
+            Self::move_piece_to(Point::new(curr.0, curr.1), Point::new(x, y), &mut state);
+            self.set_state(&state);
             self.current = None;
             self.current_pos = None;
             self.moving = false;
@@ -557,7 +688,7 @@ impl RChess {
             self.needs_draw = true;
             self.reset_board();
 
-            if Self::check_for_checkmate(self.turn, &self.get_board_state()) {
+            if Self::check_for_checkmate(self.turn, &state) {
                 return true;
             } else {
                 return false;
@@ -576,7 +707,19 @@ impl RChess {
         false
     }
 
+    fn set_state(&mut self, state: &BoardState) {
+        self.board_pcs = state.board;
+        self.w_king_pos = state.wk_pos;
+        self.b_king_pos = state.bk_pos;
+        self.enp_b = state.enp_b;
+        self.enp_w = state.enp_w;
+        self.castling = state.castling;
+        self.w_check = state.w_check;
+        self.b_check = state.b_check;
+    }
+
     fn check_for_checks(plyr: Player, state: &mut BoardState) -> bool {
+        let orig = state.player;
         state.player = plyr.switch();
         for y in 0..8 {
             for x in 0..8 {
@@ -597,13 +740,13 @@ impl RChess {
                 };
 
                 if Self::get_piece_moves(ch, Point::new(x, y), state).contains(k_pos) {
-                    state.player = plyr;
+                    state.player = orig;
                     return true;
                 }
             }
         }
 
-        state.player = plyr;
+        state.player = orig;
         false
     }
 
