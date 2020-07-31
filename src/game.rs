@@ -335,14 +335,6 @@ impl RChess {
 
         state.b_check = Self::check_for_checks(Player::Black, state);
         state.w_check = Self::check_for_checks(Player::White, state);
-
-        if state.b_check {
-            state.castling &= 0b10;
-        }
-
-        if state.w_check {
-            state.castling &= 0b01;
-        }
     }
 
     /* Takes a dx and dy that specifies a line of path.
